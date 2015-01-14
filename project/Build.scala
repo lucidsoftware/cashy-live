@@ -11,6 +11,7 @@ object ApplicationBuild extends Build {
   val appVersion      = "0.0.1." + "git rev-parse --short HEAD".!!.trim + ".SNAPSHOT"
 
   val appDependencies = Seq(
+    ws,
     "org.apache.httpcomponents" % "httpclient" % "4.3.6"
   )
 
