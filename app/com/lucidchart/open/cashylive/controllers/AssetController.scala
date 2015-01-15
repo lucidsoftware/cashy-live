@@ -61,6 +61,7 @@ class AssetController extends AppController {
         val gzippedRequest = proxyRequest(gzippedUrl, request)
 
         gzippedRequest.onFailure { case e =>
+          Logger.error(s"Error retrieving asset: $gzippedUrl", e)
           fallbackToOriginal
         }
 
@@ -92,7 +93,7 @@ class AssetController extends AppController {
    */
   private def proxyRequest(url: String, request: Request[_])(implicit ec: ExecutionContext) = {
     // initialize
-    val wsNoHeaders = WS.url(url).withFollowRedirects(false)
+    val wsNoHeaders = WS.url(url)
 
     val applicableHeaders = request.headers.toMap - "Host" - "Connection"
 
