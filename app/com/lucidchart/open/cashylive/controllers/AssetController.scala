@@ -72,7 +72,6 @@ class AssetController extends AppController {
           }
         }
       }
-
     }
     catch {
       case e: Exception => {
@@ -81,7 +80,9 @@ class AssetController extends AppController {
       }
     }
 
-    responsePromise.future
+    responsePromise.future.map { result =>
+      result.withHeaders("Vary" -> "Accept-Encoding")
+    }
   }
 
   /**
