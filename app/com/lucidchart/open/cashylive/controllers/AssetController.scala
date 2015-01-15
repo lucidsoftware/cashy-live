@@ -108,6 +108,10 @@ class AssetController extends AppController {
     ws.getStream()
   }
 
+  /**
+   * Turn the response from the proxied request into a result
+   * that play can handle.
+   */
   private def proxyResponse(response: WSResponseHeaders, body: Enumerator[Array[Byte]]): Result = {
     val garbageBody = new Status(response.status)
 
@@ -126,6 +130,10 @@ class AssetController extends AppController {
     }
   }
 
+  /**
+   * Turn the response from the proxied request into a result
+   * that play can handle.
+   */
   private def proxyResponse(response: Future[(WSResponseHeaders, Enumerator[Array[Byte]])])(implicit ec: ExecutionContext): Future[Result] = {
     response.map { case (response, body) =>
       proxyResponse(response, body)
