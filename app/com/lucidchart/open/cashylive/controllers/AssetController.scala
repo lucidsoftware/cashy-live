@@ -30,8 +30,9 @@ class AssetController extends AppController {
     try {
       val host = requestHostNoPort(request)
       val s3Bucket = bucketForHost(host)
+      val proto = if (request.secure) "https" else "http"
 
-      val originalUrl = s"https://s3.amazonaws.com/$s3Bucket/$name"
+      val originalUrl = s"$proto://s3.amazonaws.com/$s3Bucket/$name"
       val gzippedUrl = s"$originalUrl.gz"
 
       val originalRequest = proxyRequest(originalUrl, request)
