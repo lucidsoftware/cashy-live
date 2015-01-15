@@ -100,34 +100,20 @@ class AssetController extends AppController {
   }
 
   private def proxyResponse(response: WSResponseHeaders, body: Enumerator[Array[Byte]]): Result = {
-    // extract headers
-    val responseHeaders = response.headers.map { case (key, value) =>
-      (key -> value.head)
-    }
+    val garbageBody = new Status(response.status)
 
-    if (response.status == 200) {
-      // Get the content type
-      val contentType = response.headers.get("Content-Type").flatMap(_.headOption).getOrElse("application/octet-stream")
-
-      // If there's a content length, send that, otherwise return the body chunked
-      val proxiedResponse = response.headers.get("Content-Length") match {
-        case Some(Seq(length)) => {
-          // Result(ResponseHeader(response.status, responseHeaders), body).as(contentType).withHeaders("Content-Length" -> length)
-          Ok.feed(body).as(contentType).withHeaders("Content-Length" -> length)
-        }
-        case _ => {
-          // Result(ResponseHeader(response.status, responseHeaders), body).as(contentType)
-          Ok.chunked(body).as(contentType)
-        }
+    // If there's a content length, send that, otherwise return the body chunked
+    val filledBody = response.headers.get("Content-Length") match {
+      case Some(Seq(length)) => {
+        garbageBody.feed(body)
       }
-
-      val applicableHeaders = responseHeaders - "Content-Type" - "Content-Length"
-      applicableHeaders.foldLeft(proxiedResponse) { case (response, (key, value)) =>
-        response.withHeaders(key -> value)
+      case _ => {
+        garbageBody.chunked(body)
       }
     }
-    else {
-      Result(ResponseHeader(response.status, responseHeaders), body)
+
+    response.headers.foldLeft(filledBody) { case (response, (key, values)) =>
+      response.withHeaders(key -> values.head)
     }
   }
 
