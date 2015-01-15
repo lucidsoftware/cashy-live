@@ -19,6 +19,8 @@ class UnsetHostException extends Exception("Host header not set")
 class UnknownHostException(host: String) extends Exception("Unknown host " + host)
 
 class AssetController extends AppController {
+  private val logger = Logger(this.getClass)
+
   /**
    * Proxy the request to the appropriate S3 bucket.
    * If the client accepts gzip encoding, return that version instead (if available).
@@ -43,7 +45,7 @@ class AssetController extends AppController {
        */
       def fallbackToOriginal {
         originalRequest.onFailure { case e =>
-          Logger.error(s"Error retrieving asset: $originalUrl", e)
+          logger.error(s"Error retrieving asset: $originalUrl", e)
           responsePromise.success(BadGateway)
         }
 
@@ -53,15 +55,15 @@ class AssetController extends AppController {
       }
 
       if (!requestSupportsGzip(request)) {
-        Logger.info(s"Requesting $originalUrl")
+        logger.info(s"Requesting $originalUrl")
         fallbackToOriginal
       }
       else {
-        Logger.info(s"Requesting $gzippedUrl")
+        logger.info(s"Requesting $gzippedUrl")
         val gzippedRequest = proxyRequest(gzippedUrl, request)
 
         gzippedRequest.onFailure { case e =>
-          Logger.error(s"Error retrieving asset: $gzippedUrl", e)
+          logger.error(s"Error retrieving asset: $gzippedUrl", e)
           fallbackToOriginal
         }
 
@@ -77,7 +79,7 @@ class AssetController extends AppController {
     }
     catch {
       case e: Exception => {
-        Logger.error("Error while getting resource " + name)
+        logger.error("Error while getting resource " + name)
         responsePromise.success(BadGateway)
       }
     }
