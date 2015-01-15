@@ -6,5 +6,5 @@ import play.api.Play.current
 import play.api.Play.configuration
 
 object Contexts {
-  val gzipProxyContext = Executors.fixedThreadPool(configuration.getInt("context.gzip-proxy.size").get, "gzip-proxy")
+  val gzipProxyContext = Executors.cachedThreadPool("gzip-proxy")
 }
