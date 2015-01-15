@@ -25,6 +25,8 @@ class AssetController extends AppController {
    */
   def gzProxy(name: String) = Action.async { implicit request =>
     implicit val ec = Contexts.gzipProxyContext
+    val responsePromise = Promise[Result]()
+
     try {
       val host = requestHostNoPort(request)
       val s3Bucket = bucketForHost(host)
@@ -34,50 +36,52 @@ class AssetController extends AppController {
 
       val originalRequest = proxyRequest(originalUrl, request)
 
-      if (!requestSupportsGzip(request)) {
-        proxyResponse(originalRequest)
-      }
-      else {
-        val gzippedRequest = proxyRequest(gzippedUrl, request)
-
-        Future.sequence(List(originalRequest, gzippedRequest)).map { responses =>
-          val originalResponse = responses(0)
-          val gzippedResponse = responses(1)
-
-          val correctResponse = if (AssetController.successCodes.contains(gzippedResponse._1.status)) {
-            gzippedResponse
-          }
-          else {
-            originalResponse
-          }
-
-          proxyResponse(correctResponse._1, correctResponse._2)
+      /**
+       * This gets called when the gzipped response didn't work out,
+       * for whatever reason
+       */
+      def fallbackToOriginal {
+        originalRequest.onFailure { case e =>
+          Logger.error(s"Error retrieving asset: $originalUrl", e)
+          responsePromise.success(BadGateway)
         }
 
-
-        // val p1 = Promise[(WSResponseHeaders, Enumerator[Array[Byte]])]()
-
-        // gzippedRequest.map { case (response, body) =>
-        //   if (200, 304) {
-        //     p1.success(response, body)
-        //   }
-        //   else {
-        //     originalRequest.map { case(response, body) =>
-        //       p1.success(response, body)
-        //     }
-        //   }
-        // }
-
+        originalRequest.onSuccess { case (response, body) =>
+          responsePromise.success(proxyResponse(response, body))
+        }
       }
+
+      if (!requestSupportsGzip(request)) {
+        Logger.info(s"Requesting $originalUrl")
+        fallbackToOriginal
+      }
+      else {
+        Logger.info(s"Requesting $gzippedUrl")
+        val gzippedRequest = proxyRequest(gzippedUrl, request)
+
+        gzippedRequest.onFailure { case e =>
+          fallbackToOriginal
+        }
+
+        gzippedRequest.onSuccess { case (response, body) =>
+          if (AssetController.successCodes.contains(response.status)) {
+            responsePromise.success(proxyResponse(response, body))
+          }
+          else {
+            fallbackToOriginal
+          }
+        }
+      }
+
     }
     catch {
       case e: Exception => {
         Logger.error("Error while getting resource " + name)
-        Future.successful {
-          BadGateway
-        }
+        responsePromise.success(BadGateway)
       }
     }
+
+    responsePromise.future
   }
 
   /**
