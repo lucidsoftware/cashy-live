@@ -13,7 +13,7 @@ all : clean compile test stage
 
 .PHONY: package
 package:
-	build/createpackage $(VERSION)
+	build/createpackage $(VERSION_PREFIX)
 
 .PHONY: deploy
 deploy:
