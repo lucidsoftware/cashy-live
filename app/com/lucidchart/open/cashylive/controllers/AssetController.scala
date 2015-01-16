@@ -37,7 +37,8 @@ class AssetController extends AppController {
     try {
       val host = requestHostNoPort(request)
       val s3Bucket = bucketForHost(host)
-      val proto = if (request.secure) "https" else "http"
+      val secureForward = AssetController.trustXForwardedProto && request.headers.get("X-Fowarded-Proto").map(_ == "https").getOrElse(false)
+      val proto = if (request.secure || secureForward || AssetController.alwaysSecure) "https" else "http"
 
       val originalUrl = s"$proto://s3.amazonaws.com/$s3Bucket/$name"
       val gzippedUrl = s"$originalUrl.gz"
@@ -189,4 +190,6 @@ object AssetController extends AssetController {
   }.toMap
 
   val successCodes = Set(200, 304)
+  val trustXForwardedProto = configuration.getBoolean("forward.trust.x-forwarded-proto").get
+  val alwaysSecure = configuration.getBoolean("gzproxy.alwaysSecure").get
 }
