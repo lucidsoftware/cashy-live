@@ -19,11 +19,6 @@ package:
 deploy:
 	build/deploy
 
-.PHONY: test
-test: export TESTING_DB_HOSTNAME=ci-testserver.lucidchart.com
-test:
-	sbt test
-
 .PHONY: %
 %:
 	sbt $*
