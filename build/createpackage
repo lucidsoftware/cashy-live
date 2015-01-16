@@ -1,10 +1,10 @@
 #!/bin/bash
 
-VERSION_PREFIX=$1
+VERSION=$1
 
-if [ -z $VERSION_PREFIX ]; then
-    echo "usage: $0 <VERSION_PREFIX>"
-    echo "got: $0 $VERSION_PREFIX"
+if [ -z $VERSION ]; then
+    echo "usage: $0 <VERSION>"
+    echo "got: $0 $VERSION"
     exit 1;
 fi
 
@@ -23,15 +23,6 @@ PACKAGING_DIR=$DIST_DIR/$DEB_NAME
 
 #create the control file
 mkdir -p $PACKAGING_DIR/DEBIAN
-
-#BUILD_NUMBER and JOB_NAME  set by jenkins
-if [ $VERSION_PREFIX = "master"  ];then
-	VERSION=1.0-$BUILD_NUMBER
-else
-	VERSION=1.0-$VERSION_PREFIX$BUILD_NUMBER
-fi
-
-echo "Creating deb package for job $JOB_NAME.  Version: $VERSION";
 
 #create the control file
 echo "Package: $DEB_NAME-$VERSION
@@ -55,7 +46,7 @@ echo $VERSION > $INSTALL_DIR/staged-version
 
 #build the .deb
 fakeroot dpkg-deb --build $PACKAGING_DIR
-FINAL_DEB=${DIST_DIR}/${DEB_NAME}_${VERSION}.deb
+FINAL_DEB=${DIST_DIR}/${DEB_NAME}_1.0-${VERSION}.deb
 cp ${DIST_DIR}/$DEB_NAME.deb $FINAL_DEB
 
 exit $?
