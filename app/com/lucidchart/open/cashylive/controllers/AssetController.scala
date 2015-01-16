@@ -22,6 +22,11 @@ class AssetController extends AppController {
   private val logger = Logger(this.getClass)
 
   /**
+   * The routes file cannot handle a *file without a /
+   */
+  def gzProxyRoot() = gzProxy("/")
+
+  /**
    * Proxy the request to the appropriate S3 bucket.
    * If the client accepts gzip encoding, return that version instead (if available).
    */
