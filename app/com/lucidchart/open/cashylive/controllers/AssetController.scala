@@ -85,7 +85,7 @@ class AssetController extends AppController {
     }
 
     responsePromise.future.map { result =>
-      result.withHeaders("Vary" -> "Accept-Encoding")
+      result.withHeaders("Vary" -> "Accept-Encoding, Origin")
     }
   }
 
