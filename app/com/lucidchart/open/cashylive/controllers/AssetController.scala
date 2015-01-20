@@ -2,6 +2,9 @@ package com.lucidchart.open.cashylive.controllers
 
 import com.lucidchart.open.cashylive.Contexts
 
+import java.net.ConnectException
+import java.util.concurrent.TimeoutException
+
 import play.api.libs.iteratee.Enumerator
 import play.api.libs.ws._
 import play.api.libs.ws.ning.NingAsyncHttpClientConfigBuilder
@@ -11,15 +14,16 @@ import play.api.Play.current
 import play.api.Logger
 
 import scala.collection.JavaConversions
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import scala.concurrent.Promise
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.language.postfixOps
 
 class UnsetHostException extends Exception("Host header not set")
 class UnknownHostException(host: String) extends Exception("Unknown host " + host)
 
 class AssetController extends AppController {
   private val logger = Logger(this.getClass)
+  private val maxRetries = configuration.getInt("gzproxy.maxRetries").get
 
   /**
    * The routes file cannot handle a *file without a /
@@ -43,7 +47,7 @@ class AssetController extends AppController {
       val originalUrl = s"$proto://s3.amazonaws.com/$s3Bucket/$name"
       val gzippedUrl = s"$originalUrl.gz"
 
-      val originalRequest = proxyRequest(originalUrl, request)
+      val originalRequest = proxyRequestWithRetry(originalUrl, request, maxRetries)
 
       /**
        * This gets called when the gzipped response didn't work out,
@@ -66,7 +70,7 @@ class AssetController extends AppController {
       }
       else {
         logger.info(s"Requesting $gzippedUrl")
-        val gzippedRequest = proxyRequest(gzippedUrl, request)
+        val gzippedRequest = proxyRequestWithRetry(gzippedUrl, request, maxRetries)
 
         gzippedRequest.onFailure { case e =>
           logger.error(s"Error retrieving asset: $gzippedUrl", e)
@@ -96,10 +100,46 @@ class AssetController extends AppController {
   }
 
   /**
+   * Make a request for a resource and retry until either a successful response is given or the
+   * limit is reached. Pass all headers through both ways.
+   *
+   * @param url the url of the resource to request.
+   * @param request the original request made for the resource
+   * @param retriesRemaining the number of retries remaining
+   * @return the response from cloudfront
+   */
+  private def proxyRequestWithRetry(
+      url: String,
+      request: Request[_],
+      retriesRemaining: Int)(
+      implicit ec: ExecutionContext): Future[(WSResponseHeaders, Enumerator[Array[Byte]])] = {
+    if (retriesRemaining == 1) {
+      proxyRequest(url, request)
+    }
+    else {
+      proxyRequest(url, request) flatMap { case (response, body) =>
+        if (response.status >= 500) {
+          proxyRequestWithRetry(url, request, retriesRemaining - 1)
+        }
+        else {
+          Future.successful((response, body))
+        }
+      } recoverWith {
+        case e @ (_: TimeoutException | _: ConnectException) => {
+          proxyRequestWithRetry(url, request, retriesRemaining - 1)
+        }
+      }
+    }
+  }
+
+  /**
    * Create a proxy request
    * Pass all the headers both ways
    */
-  private def proxyRequest(url: String, request: Request[_])(implicit ec: ExecutionContext) = {
+  private def proxyRequest(
+      url: String,
+      request: Request[_])(
+      implicit ec: ExecutionContext): Future[(WSResponseHeaders, Enumerator[Array[Byte]])] = {
     // initialize
     val wsNoHeaders = WS.url(url)
 
@@ -149,7 +189,7 @@ class AssetController extends AppController {
   /**
    * Get the associated s3 bucket given the host
    */
-  private def bucketForHost(host: String) = {
+  private def bucketForHost(host: String): String = {
     AssetController.hostMapping.get(host).getOrElse {
       throw new UnknownHostException(host)
     }
@@ -158,7 +198,7 @@ class AssetController extends AppController {
   /**
    * extract the host header from the request, and pull off the port number
    */
-  private def requestHostNoPort(request: Request[_]) = {
+  private def requestHostNoPort(request: Request[_]): String = {
     val hostWithPort = request.headers.get("Host").getOrElse {
       throw new UnsetHostException
     }
@@ -175,7 +215,7 @@ class AssetController extends AppController {
   /**
    * find out whether the requester supports gzip
    */
-  private def requestSupportsGzip(request: Request[_]) = {
+  private def requestSupportsGzip(request: Request[_]): Boolean = {
     request.headers.get("Accept-Encoding").map { encoding =>
       encoding.split(',').contains("gzip")
     }.getOrElse(false)
