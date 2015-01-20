@@ -113,7 +113,7 @@ class AssetController extends AppController {
       request: Request[_],
       retriesRemaining: Int)(
       implicit ec: ExecutionContext): Future[(WSResponseHeaders, Enumerator[Array[Byte]])] = {
-    if (retriesRemaining == 1) {
+    if (retriesRemaining <= 0) {
       proxyRequest(url, request)
     }
     else {
