@@ -110,7 +110,7 @@ class AssetController extends AppController {
     }
     catch {
       case e: Exception => {
-        logger.error("Error while getting resource " + name)
+        logger.error("Error while getting resource " + name, e)
         responsePromise.success(BadGateway)
       }
     }
