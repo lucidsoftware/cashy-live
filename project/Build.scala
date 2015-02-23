@@ -11,7 +11,8 @@ object ApplicationBuild extends Build {
   val appVersion      = "0.0.1." + "git rev-parse --short HEAD".!!.trim + ".SNAPSHOT"
 
   val appDependencies = Seq(
-    ws
+    ws,
+    "com.amazonaws" % "aws-java-sdk" % "1.9.21"
   )
 
   val main = Project(appName, file(".")).enablePlugins(PlayScala).settings(
