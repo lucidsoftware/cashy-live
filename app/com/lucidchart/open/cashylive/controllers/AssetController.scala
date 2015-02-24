@@ -1,18 +1,9 @@
 package com.lucidchart.open.cashylive.controllers
 
-import com.amazonaws.AmazonClientException
-import com.amazonaws.AmazonServiceException
-import com.amazonaws.auth.profile.ProfileCredentialsProvider
-import com.amazonaws.HttpMethod
-import com.amazonaws.services.s3.AmazonS3
-import com.amazonaws.services.s3.AmazonS3Client
-import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest
-
 import com.lucidchart.open.cashylive.Contexts
 
 import java.net.ConnectException
 import java.util.concurrent.TimeoutException
-import java.util.Date
 
 import play.api.libs.iteratee.Enumerator
 import play.api.libs.ws._
@@ -33,7 +24,6 @@ class UnknownHostException(host: String) extends Exception("Unknown host " + hos
 class AssetController extends AppController {
   private val logger = Logger(this.getClass)
   private val maxRetries = configuration.getInt("gzproxy.maxRetries").get
-  private val s3Client = new AmazonS3Client(new ProfileCredentialsProvider())
 
   /**
    * The routes file cannot handle a *file without a /
@@ -50,23 +40,12 @@ class AssetController extends AppController {
 
     try {
       val host = requestHostNoPort(request)
-      val info = infoForHost(host)
+      val s3Bucket = bucketForHost(host)
+      val secureForward = AssetController.trustXForwardedProto && request.headers.get("X-Fowarded-Proto").map(_ == "https").getOrElse(false)
+      val proto = if (request.secure || secureForward || AssetController.alwaysSecure) "https" else "http"
 
-      val (originalUrl, gzippedUrl) = if (info.auth) {
-        val originalUrl = signedUrl(info.bucket, name)
-        val gzippedUrl = signedUrl(info.bucket, s"$name.gz")
-
-        (originalUrl, gzippedUrl)
-      }
-      else {
-        val s3Bucket = info.bucket
-        val secureForward = AssetController.trustXForwardedProto && request.headers.get("X-Fowarded-Proto").map(_ == "https").getOrElse(false)
-        val proto = if (request.secure || secureForward || AssetController.alwaysSecure) "https" else "http"
-
-        val originalUrl = s"$proto://s3.amazonaws.com/$s3Bucket/$name"
-
-        (originalUrl, s"$originalUrl.gz")
-      }
+      val originalUrl = s"$proto://s3.amazonaws.com/$s3Bucket/$name"
+      val gzippedUrl = s"$originalUrl.gz"
 
       val originalRequest = proxyRequestWithRetry(originalUrl, request, maxRetries)
 
@@ -208,23 +187,9 @@ class AssetController extends AppController {
   }
 
   /**
-   * Get a signed URL for an S3 item.
-   * Always returns https urls. (always over ssl)
+   * Get the associated s3 bucket given the host
    */
-  private def signedUrl(bucket: String, name: String) = {
-    val expiration = new Date(System.currentTimeMillis + AssetController.s3SignedExpirationMS)
-    val presignedRequest = new GeneratePresignedUrlRequest(bucket, name)
-    presignedRequest.setMethod(HttpMethod.GET)
-    presignedRequest.setExpiration(expiration)
-
-    val signedUrl = s3Client.generatePresignedUrl(presignedRequest)
-    signedUrl.toString
-  }
-
-  /**
-   * Get the host info, given the host
-   */
-  private def infoForHost(host: String): HostInfo = {
+  private def bucketForHost(host: String): String = {
     AssetController.hostMapping.get(host).getOrElse {
       throw new UnknownHostException(host)
     }
@@ -257,20 +222,14 @@ class AssetController extends AppController {
   }
 }
 
-case class HostInfo(bucket: String, auth: Boolean)
-
 object AssetController extends AssetController {
   val hostMapping = JavaConversions.iterableAsScalaIterable(
     configuration.getConfigList("hostmapping").get
   ).map { c =>
-    (c.getString("host").get -> HostInfo(
-      c.getString("bucket").get,
-      c.getBoolean("auth").getOrElse(false)
-    ))
+    (c.getString("host").get -> c.getString("bucket").get)
   }.toMap
 
   val successCodes = Set(200, 304)
   val trustXForwardedProto = configuration.getBoolean("forward.trust.x-forwarded-proto").get
   val alwaysSecure = configuration.getBoolean("gzproxy.alwaysSecure").get
-  val s3SignedExpirationMS = configuration.getLong("s3.signed.expirationMS").get
 }
